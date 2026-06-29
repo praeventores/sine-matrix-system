@@ -20,7 +20,6 @@
 
         h1 { color: #00ff66; font-size: 1.2rem; margin-top: 0; text-transform: uppercase; letter-spacing: 4px; }
         
-        /* Message Preview Banner */
         .preview-banner {
             background: #070709; border: 1px solid #222; padding: 12px;
             border-radius: 4px; min-height: 20px; font-size: 0.85rem;
@@ -38,7 +37,6 @@
         .audio-input:focus { border-color: #00ff66; }
         .audio-input:disabled { background: #0c0c0f; border-color: #222; color: #444; }
 
-        /* Controls / Toggles */
         .control-panel {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 20px; font-size: 0.8rem; background: #16161c; padding: 10px; border-radius: 3px;
@@ -51,7 +49,6 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center; color: #787880;
         }
 
-        /* Identity Overlay Modal */
         .identity-modal {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #111114; display: flex; flex-direction: column;
@@ -98,22 +95,20 @@
 </div>
 
 <script>
-    // DEFINE EDGE TARGET ROUTE HERE
-    const EDGE_WS_URL = "wss://https://sine-matrix-system-backend.thevrgooner.workers.dev//ws";
+    // TARGET WORKER ENDPOINT ADDRESS (Update with your live subdomain link)
+    const EDGE_WS_URL = "wss://sine-matrix-system-backend.thevrgooner.workers.dev/ws";
 
     let socket = null;
     let audioCtx = null;
     let currentUsername = "";
-    let transmissionMode = "MATRIX"; // "MATRIX" (Burst sequence segments) or "STANDARD" (Instant Delivery)
+    let transmissionMode = "MATRIX"; 
     let isProcessingInbound = false;
-
-    // Twin High-Speed Variable Audio Nodes
-    let audioNodes = { alternate: false };
+    let audioAlternateFlag = false;
 
     const inputElement = document.getElementById('textReceiver');
     const previewBanner = document.getElementById('streamPreview');
 
-    // 1. Authenticate Identity State Profiles
+    // 1. Manage User Identity Session
     function checkIdentity() {
         const storedUser = localStorage.getItem("terminal_guest_identity");
         if (storedUser) {
@@ -135,7 +130,7 @@
         }
     });
 
-    // Toggle Modes Hook
+    // Toggle Modes Engine Switch
     document.getElementById('toggleModeBtn').addEventListener('click', () => {
         transmissionMode = transmissionMode === "MATRIX" ? "STANDARD" : "MATRIX";
         document.getElementById('modeDisplay').innerText = transmissionMode === "MATRIX" ? "ACOUSTIC MATRIX" : "STANDARD TEXT";
@@ -159,7 +154,7 @@
         socket.onopen = () => {
             document.getElementById('engineStatus').innerText = "NODE ONLINE // SECURITY VERIFIED";
             document.getElementById('engineStatus').style.color = "#00ff66";
-            document.getElementById('metricDisplay').innerText = "System secure. Input text terminal ready.";
+            document.getElementById('metricDisplay').innerText = "System secure. Input terminal active.";
             inputElement.disabled = false;
             inputElement.placeholder = "Enter transmission payload...";
             inputElement.focus();
@@ -184,10 +179,9 @@
         };
     }
 
-    // Dynamic Tone Pitch Engine Logic
     function getFrequencyFromChar(char) {
         const code = char.charCodeAt(0);
-        return Math.pow(2, ((code - 32) - 45) / 12) * 523.25; // Skewed high to hit C5 center scales
+        return Math.pow(2, ((code - 32) - 45) / 12) * 523.25; 
     }
 
     // Process Outbound Submissions
@@ -203,7 +197,7 @@
                     sender: currentUsername,
                     content: textContent,
                     mode: transmissionMode,
-                    sequence: textContent.split('') // Fragment character blocks
+                    sequence: textContent.split('')
                 };
 
                 socket.send(JSON.stringify(packetPayload));
@@ -215,33 +209,31 @@
         }
     });
 
-    // Handling Inbound: Standard Instant Packages
+    // Inbound: Standard Instant Packages
     function processStandardPacket(packet) {
         previewBanner.innerText = `INCOMING MSG FROM [${packet.sender}]`;
         document.getElementById('metricDisplay').innerHTML = `
             <span style="color:#00ff66;">[${packet.sender}]:</span> ${packet.content}
         `;
-        // Sound Alert: Single high alert chime note chime block
         triggerHighSpeedSine(880, 0.08);
         setTimeout(() => triggerHighSpeedSine(1320, 0.12), 40);
     }
 
-    // Handling Inbound: Encrypted Matrix Fast Series Streams
+    // Inbound: Accelerated Matrix Streams
     function processMatrixSequence(packet) {
         isProcessingInbound = true;
         inputElement.disabled = true;
         
         let index = 0;
         let constructedString = "";
-        const rapidIntervalSpeed = 50; // Milliseconds per note (extremely rapid alternation)
+        const rapidIntervalSpeed = 45; 
 
-        previewBanner.innerText = `DECRYPTING INCOMING PACKET STREAM FROM [${packet.sender}]...`;
+        previewBanner.innerText = `DECRYPTING STREAM FROM [${packet.sender}]...`;
         document.getElementById('engineStatus').innerText = "PROCESSING SEQUENTIAL MATRIX CHARGING ARRAYS...";
         document.getElementById('engineStatus').style.color = "#ffb703";
 
         function decodeNextChar() {
             if (index >= packet.sequence.length) {
-                // Sequence terminal cleanup wrap profiles
                 setTimeout(() => {
                     isProcessingInbound = false;
                     inputElement.disabled = false;
@@ -258,18 +250,16 @@
             const activeChar = packet.sequence[index];
             constructedString += activeChar;
             
-            // Render real-time decoding banner preview transformations at the top container frame
             previewBanner.innerText = `RECEIVING DATA: ${constructedString}_`;
 
             const freqValue = getFrequencyFromChar(activeChar);
             
-            // Rapid high speed alternating sine oscillator sequence matrix loop calculations
-            if (audioNodes.alternate) {
-                triggerHighSpeedSine(freqValue, 0.06, 0.002); // Slightly raw
+            if (audioAlternateFlag) {
+                triggerHighSpeedSine(freqValue, 0.05, 0.002); 
             } else {
-                triggerHighSpeedSine(freqValue * 1.5, 0.05, 0.001); // Octave fifth tracking shifts
+                triggerHighSpeedSine(freqValue * 1.5, 0.045, 0.001); 
             }
-            audioNodes.alternate = !audioNodes.alternate;
+            audioAlternateFlag = !audioAlternateFlag;
 
             index++;
             setTimeout(decodeNextChar, rapidIntervalSpeed);
@@ -278,7 +268,7 @@
         decodeNextChar();
     }
 
-    // High Speed Ultra Precise Oscillating Synth Profile Nodes
+    // High Speed Precise Oscillating Synth Node
     function triggerHighSpeedSine(frequency, duration, attackTime = 0.003) {
         if (isNaN(frequency) || frequency <= 0) return;
 
@@ -288,7 +278,6 @@
         osc.type = 'sine';
         osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
 
-        // Anti-pop micro attack envelope frames
         gain.gain.setValueAtTime(0, audioCtx.currentTime);
         gain.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + attackTime);
         gain.gain.setValueAtTime(0.12, audioCtx.currentTime + duration - 0.01);
@@ -301,7 +290,6 @@
         osc.stop(audioCtx.currentTime + duration);
     }
 
-    // Initialize Identity Sequence Verification checks upon frame initialization triggers
     window.onload = checkIdentity;
 
     window.addEventListener('click', () => {
