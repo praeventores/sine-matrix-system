@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Matrix Terminal — System V</title>
+    <style>
+        body {
+            margin: 0; padding: 0; background: #0b0b0d; color: #c5c5cb;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden;
+        }
+
+        .terminal-container {
+            border: 2px solid #2a2a30; background: #111114; padding: 35px;
+            border-radius: 4px; box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+            max-width: 600px; width: 90%; position: relative;
+        }
+
+        h1 { color: #00ff66; font-size: 1.2rem; margin-top: 0; text-transform: uppercase; letter-spacing: 4px; }
+        
+        /* Message Preview Banner */
+        .preview-banner {
+            background: #070709; border: 1px solid #222; padding: 12px;
+            border-radius: 4px; min-height: 20px; font-size: 0.85rem;
+            color: #00ff66; text-transform: uppercase; overflow: hidden;
+            white-space: nowrap; text-overflow: ellipsis; margin-bottom: 20px;
+        }
+
+        .input-wrapper { margin: 20px 0; }
+        
+        .audio-input {
+            width: 100%; background: #050507; border: 1px solid #3e3e47; padding: 14px;
+            box-sizing: border-box; color: #ffffff; font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1rem; border-radius: 3px; outline: none; transition: all 0.2s ease;
+        }
+        .audio-input:focus { border-color: #00ff66; }
+        .audio-input:disabled { background: #0c0c0f; border-color: #222; color: #444; }
+
+        /* Controls / Toggles */
+        .control-panel {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px; font-size: 0.8rem; background: #16161c; padding: 10px; border-radius: 3px;
+        }
+        .mode-toggle { cursor: pointer; color: #ffb703; font-weight: bold; border: none; background: none; font-family: monospace; }
+
+        .data-stream {
+            background: #050507; border: 1px solid #1c1c22; padding: 15px;
+            border-radius: 3px; font-size: 0.8rem; min-height: 60px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; color: #787880;
+        }
+
+        /* Identity Overlay Modal */
+        .identity-modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #111114; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 10; border-radius: 4px;
+        }
+
+        .identity-btn {
+            background: #00ff66; color: #000; border: none; padding: 10px 20px;
+            font-family: monospace; font-weight: bold; cursor: pointer; margin-top: 15px; border-radius: 3px;
+        }
+
+        .status-indicator { font-size: 0.7rem; color: #52525b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .user-tag { color: #ffb703; }
+    </style>
+</head>
+<body>
+
+<div class="terminal-container">
+    <!-- Guest Identity Setup Overlay -->
+    <div class="identity-modal" id="loginModal">
+        <h3 style="color:#00ff66; letter-spacing:2px; text-transform:uppercase; font-size:1rem;">Initialize Guest Identity</h3>
+        <input type="text" class="audio-input" id="usernameInput" placeholder="Enter Call Sign..." style="width: 80%; text-align: center;">
+        <button class="identity-btn" id="saveIdentityBtn">ESTABLISH LINK</button>
+    </div>
+
+    <!-- Active Stream Preview Block -->
+    <div class="preview-banner" id="streamPreview">SYSTEM READY // LINK IDLE</div>
+
+    <div class="status-indicator" id="engineStatus">INITIALIZING CHANNELS...</div>
+    <h1>Matrix Terminal <span id="localUserDisplay" class="user-tag"></span></h1>
+    
+    <div class="control-panel">
+        <div>MODE: <span id="modeDisplay" style="color:#ffb703; font-weight:bold;">ACOUSTIC MATRIX</span></div>
+        <button class="mode-toggle" id="toggleModeBtn">[SWITCH MODE]</button>
+    </div>
+
+    <div class="input-wrapper">
+        <input type="text" class="audio-input" id="textReceiver" placeholder="Authenticating node..." autocomplete="off" disabled>
+    </div>
+    
+    <div class="data-stream">
+        <div id="metricDisplay">Awaiting network connection synchronization...</div>
+    </div>
+</div>
+
+<script>
+    // DEFINE EDGE TARGET ROUTE HERE
+    const EDGE_WS_URL = "wss://YOUR_WORKER_SUBDOMAIN.workers.dev/ws";
+
+    let socket = null;
+    let audioCtx = null;
+    let currentUsername = "";
+    let transmissionMode = "MATRIX"; // "MATRIX" (Burst sequence segments) or "STANDARD" (Instant Delivery)
+    let isProcessingInbound = false;
+
+    // Twin High-Speed Variable Audio Nodes
+    let audioNodes = { alternate: false };
+
+    const inputElement = document.getElementById('textReceiver');
+    const previewBanner = document.getElementById('streamPreview');
+
+    // 1. Authenticate Identity State Profiles
+    function checkIdentity() {
+        const storedUser = localStorage.getItem("terminal_guest_identity");
+        if (storedUser) {
+            currentUsername = storedUser;
+            document.getElementById('loginModal').style.display = "none";
+            document.getElementById('localUserDisplay').innerText = `[${currentUsername}]`;
+            initAudioAndNetwork();
+        }
+    }
+
+    document.getElementById('saveIdentityBtn').addEventListener('click', () => {
+        const nameVal = document.getElementById('usernameInput').value.trim();
+        if (nameVal !== "") {
+            localStorage.setItem("terminal_guest_identity", nameVal);
+            currentUsername = nameVal;
+            document.getElementById('loginModal').style.display = "none";
+            document.getElementById('localUserDisplay').innerText = `[${currentUsername}]`;
+            initAudioAndNetwork();
+        }
+    });
+
+    // Toggle Modes Hook
+    document.getElementById('toggleModeBtn').addEventListener('click', () => {
+        transmissionMode = transmissionMode === "MATRIX" ? "STANDARD" : "MATRIX";
+        document.getElementById('modeDisplay').innerText = transmissionMode === "MATRIX" ? "ACOUSTIC MATRIX" : "STANDARD TEXT";
+        document.getElementById('modeDisplay').style.color = transmissionMode === "MATRIX" ? "#ffb703" : "#00ff66";
+        inputElement.focus();
+    });
+
+    function initAudioAndNetwork() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            connectWebSocket();
+        }
+    }
+
+    function connectWebSocket() {
+        document.getElementById('engineStatus').innerText = "CONNECTING TO NETWORK MATRIX...";
+        socket = new WebSocket(EDGE_WS_URL);
+
+        socket.onopen = () => {
+            document.getElementById('engineStatus').innerText = "NODE ONLINE // SECURITY VERIFIED";
+            document.getElementById('engineStatus').style.color = "#00ff66";
+            document.getElementById('metricDisplay').innerText = "System secure. Input text terminal ready.";
+            inputElement.disabled = false;
+            inputElement.placeholder = "Enter transmission payload...";
+            inputElement.focus();
+        };
+
+        socket.onmessage = (event) => {
+            try {
+                const packet = JSON.parse(event.data);
+                if (packet.mode === "STANDARD") {
+                    processStandardPacket(packet);
+                } else if (packet.mode === "MATRIX") {
+                    processMatrixSequence(packet);
+                }
+            } catch (err) { console.error("Data processing failure", err); }
+        };
+
+        socket.onclose = () => {
+            document.getElementById('engineStatus').innerText = "NODE LINK DISRUPTED // RETRYING LINK";
+            document.getElementById('engineStatus').style.color = "#ff3e3e";
+            inputElement.disabled = true;
+            setTimeout(connectWebSocket, 3000);
+        };
+    }
+
+    // Dynamic Tone Pitch Engine Logic
+    function getFrequencyFromChar(char) {
+        const code = char.charCodeAt(0);
+        return Math.pow(2, ((code - 32) - 45) / 12) * 523.25; // Skewed high to hit C5 center scales
+    }
+
+    // Process Outbound Submissions
+    inputElement.addEventListener('keydown', (event) => {
+        if (isProcessingInbound) { event.preventDefault(); return; }
+
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            const textContent = inputElement.value.trim();
+            if (textContent !== "" && socket.readyState === WebSocket.OPEN) {
+                
+                const packetPayload = {
+                    sender: currentUsername,
+                    content: textContent,
+                    mode: transmissionMode,
+                    sequence: textContent.split('') // Fragment character blocks
+                };
+
+                socket.send(JSON.stringify(packetPayload));
+                
+                previewBanner.innerText = `OUTBOUND TRANSMISSION SENT // [MODE: ${transmissionMode}]`;
+                document.getElementById('metricDisplay').innerText = `Broadcast complete: "${textContent}"`;
+                inputElement.value = "";
+            }
+        }
+    });
+
+    // Handling Inbound: Standard Instant Packages
+    function processStandardPacket(packet) {
+        previewBanner.innerText = `INCOMING MSG FROM [${packet.sender}]`;
+        document.getElementById('metricDisplay').innerHTML = `
+            <span style="color:#00ff66;">[${packet.sender}]:</span> ${packet.content}
+        `;
+        // Sound Alert: Single high alert chime note chime block
+        triggerHighSpeedSine(880, 0.08);
+        setTimeout(() => triggerHighSpeedSine(1320, 0.12), 40);
+    }
+
+    // Handling Inbound: Encrypted Matrix Fast Series Streams
+    function processMatrixSequence(packet) {
+        isProcessingInbound = true;
+        inputElement.disabled = true;
+        
+        let index = 0;
+        let constructedString = "";
+        const rapidIntervalSpeed = 50; // Milliseconds per note (extremely rapid alternation)
+
+        previewBanner.innerText = `DECRYPTING INCOMING PACKET STREAM FROM [${packet.sender}]...`;
+        document.getElementById('engineStatus').innerText = "PROCESSING SEQUENTIAL MATRIX CHARGING ARRAYS...";
+        document.getElementById('engineStatus').style.color = "#ffb703";
+
+        function decodeNextChar() {
+            if (index >= packet.sequence.length) {
+                // Sequence terminal cleanup wrap profiles
+                setTimeout(() => {
+                    isProcessingInbound = false;
+                    inputElement.disabled = false;
+                    document.getElementById('engineStatus').innerText = "NODE ONLINE // SECURITY VERIFIED";
+                    document.getElementById('engineStatus').style.color = "#00ff66";
+                    document.getElementById('metricDisplay').innerHTML = `
+                        <span style="color:#ffb703;">[${packet.sender}]:</span> ${packet.content}
+                    `;
+                    inputElement.focus();
+                }, 200);
+                return;
+            }
+
+            const activeChar = packet.sequence[index];
+            constructedString += activeChar;
+            
+            // Render real-time decoding banner preview transformations at the top container frame
+            previewBanner.innerText = `RECEIVING DATA: ${constructedString}_`;
+
+            const freqValue = getFrequencyFromChar(activeChar);
+            
+            // Rapid high speed alternating sine oscillator sequence matrix loop calculations
+            if (audioNodes.alternate) {
+                triggerHighSpeedSine(freqValue, 0.06, 0.002); // Slightly raw
+            } else {
+                triggerHighSpeedSine(freqValue * 1.5, 0.05, 0.001); // Octave fifth tracking shifts
+            }
+            audioNodes.alternate = !audioNodes.alternate;
+
+            index++;
+            setTimeout(decodeNextChar, rapidIntervalSpeed);
+        }
+
+        decodeNextChar();
+    }
+
+    // High Speed Ultra Precise Oscillating Synth Profile Nodes
+    function triggerHighSpeedSine(frequency, duration, attackTime = 0.003) {
+        if (isNaN(frequency) || frequency <= 0) return;
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+        // Anti-pop micro attack envelope frames
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + attackTime);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime + duration - 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // Initialize Identity Sequence Verification checks upon frame initialization triggers
+    window.onload = checkIdentity;
+
+    window.addEventListener('click', () => {
+        if (currentUsername !== "") initAudioAndNetwork();
+    });
+</script>
+
+</body>
+</html>
