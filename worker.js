@@ -18,7 +18,37 @@ export default {
     return new Response("Secure Audio Matrix Terminal Node", { status: 200 });
   }
 };
+const cors = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
+};
 
+export default {
+
+    async fetch(request) {
+
+        if (request.method === "OPTIONS") {
+            return new Response(null, {
+                headers: cors
+            });
+        }
+
+        return new Response(
+            JSON.stringify({
+                success: true
+            }),
+            {
+                headers: {
+                    ...cors,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+    }
+
+}
 // --- The Durable Object Room Coordinator ---
 export class AudioRoom {
   constructor(state, env) {
